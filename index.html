@@ -24,23 +24,33 @@ async function checkForMenuUpdate(){
 }
 function applyMenuUpdateWhenIdle(){
   if(!updateAvailable || document.hidden)return;
-  if(manualMode && Date.now()-lastTouch<REJOIN_MS)return;
+  if(holdPaused || (holdReleasedAt && Date.now()-holdReleasedAt<ROTATION_MS) || (manualMode && Date.now()-lastTouch<REJOIN_MS))return;
   const url=new URL(window.location.href);
   url.searchParams.set('updated',String(Date.now()));
   window.location.replace(url.toString());
 }
 const ROTATION_MS=7000, REJOIN_MS=15000;
-let current=0,lastTouch=0,manualMode=false,timer,hideTimer;const img=document.getElementById('poster'),nav=document.getElementById('controls'),hint=document.getElementById('hint');
+let current=0,lastTouch=0,manualMode=false,timer,hideTimer,holdPaused=false,holdReleasedAt=0;const img=document.getElementById('poster'),nav=document.getElementById('controls'),hint=document.getElementById('hint');
 function show(i,manual=false){current=(i+slides.length)%slides.length;img.src=slides[current].src;img.alt=slides[current].name+' — 7th Ward Spirits';[...nav.children].forEach((b,n)=>{b.classList.toggle('active',n===current);b.setAttribute('aria-current',n===current?'true':'false')});if(manual){lastTouch=Date.now();manualMode=true;reveal()}}
 function reveal(){nav.classList.remove('dim');hint.classList.remove('dim');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{nav.classList.add('dim');hint.classList.add('dim')},6000)}
 slides.forEach((s,i)=>{let b=document.createElement('button');b.textContent=s.name;b.onclick=()=>show(i,true);nav.appendChild(b)});
-let x0=null,y0=null;const stage=document.getElementById('stage');stage.addEventListener('touchstart',e=>{if(e.touches.length===1){x0=e.touches[0].clientX;y0=e.touches[0].clientY}}, {passive:true});stage.addEventListener('touchend',e=>{if(x0===null)return;const dx=e.changedTouches[0].clientX-x0,dy=e.changedTouches[0].clientY-y0;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.2){show(current+(dx<0?1:-1),true)}else{lastTouch=Date.now();manualMode=true;reveal()}x0=null;y0=null},{passive:true});
+let x0=null,y0=null;const stage=document.getElementById('stage');
+// Hold a slide to pause it; release gives a fresh seven seconds before clock sync resumes.
+stage.addEventListener('pointerdown',e=>{if(e.isPrimary){holdPaused=true;holdReleasedAt=0;reveal()} });
+function releaseHold(){if(holdPaused){holdPaused=false;holdReleasedAt=Date.now();lastTouch=holdReleasedAt;manualMode=true;reveal()}}
+stage.addEventListener('pointerup',releaseHold);
+stage.addEventListener('pointercancel',releaseHold);
+window.addEventListener('pointerup',releaseHold);
+window.addEventListener('blur',releaseHold);stage.addEventListener('touchstart',e=>{if(e.touches.length===1){x0=e.touches[0].clientX;y0=e.touches[0].clientY}}, {passive:true});stage.addEventListener('touchend',e=>{if(x0===null)return;const dx=e.changedTouches[0].clientX-x0,dy=e.changedTouches[0].clientY-y0;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.2){show(current+(dx<0?1:-1),true)}else{lastTouch=Date.now();manualMode=true;reveal()}x0=null;y0=null},{passive:true});
 window.addEventListener('keydown',e=>{if(e.key==='ArrowRight')show(current+1,true);if(e.key==='ArrowLeft')show(current-1,true)});
 document.getElementById('full').onclick=async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()}catch(e){alert('Use Chrome menu → Add to Home screen for an app-like display.')}};
 // A shared Unix-time schedule ensures both devices show the same slide after inactivity.
 // No server connection is required, but both Android devices must have automatic date/time enabled.
 function syncedSlide(){return Math.floor(Date.now()/ROTATION_MS)%slides.length}
 function update(){
+  if(holdPaused)return;
+  if(holdReleasedAt && Date.now()-holdReleasedAt<ROTATION_MS)return;
+  if(holdReleasedAt){holdReleasedAt=0;manualMode=false;}
   if(manualMode){
     if(Date.now()-lastTouch<REJOIN_MS)return;
     manualMode=false;
