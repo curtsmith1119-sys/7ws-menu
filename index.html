@@ -61,6 +61,25 @@ function update(){
   const target=syncedSlide();
   if(current!==target)show(target);
 }
+// Keep the Android tasting-room display awake while this page is visible.
+// The browser may decline/release this lock (e.g. low battery or power saving).
+let screenWakeLock=null,wakeLockPending=false;
+async function keepScreenAwake(){
+  if(!('wakeLock' in navigator)||document.hidden||screenWakeLock||wakeLockPending)return;
+  wakeLockPending=true;
+  try{
+    const lock=await navigator.wakeLock.request('screen');
+    if(document.hidden){await lock.release();return;}
+    screenWakeLock=lock;
+    lock.addEventListener('release',()=>{if(screenWakeLock===lock)screenWakeLock=null});
+  }catch(error){/* Keep the slideshow running if the device denies wake lock. */}
+  finally{wakeLockPending=false;}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepScreenAwake()});
+document.addEventListener('pointerdown',keepScreenAwake,{passive:true});
+document.addEventListener('keydown',keepScreenAwake);
+setInterval(keepScreenAwake,60000);
+keepScreenAwake();
 show(syncedSlide());reveal();timer=setInterval(update,200);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){update();checkForMenuUpdate()}});
 setInterval(checkForMenuUpdate,AUTO_CHECK_MS);
